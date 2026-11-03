@@ -110,12 +110,10 @@
   .seg button { background: transparent; border: 0; padding: 7px 12px; font-size: 13.5px; font-weight: 600; color: var(--fg-2); cursor: pointer; min-height: 36px; }
   .seg button + button { border-left: 1px solid var(--line-2); }
   .seg button[aria-pressed="true"] { background: var(--bg-3); color: var(--fg); }
-  .zoom { display: inline-flex; gap: 6px; }
-  .zoom button { width: 36px; height: 36px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--bg-3); cursor: pointer; font-size: 18px; line-height: 1; }
   .tools-right { display: inline-flex; gap: 8px; align-items: center; }
-  .scroller { position: relative; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; max-height: 70vh; cursor: grab; touch-action: pan-x pan-y; }
-  .scroller.dragging { cursor: grabbing; }
-  .scroller svg { display: block; height: auto; margin: 0 auto; }
+  /* the whole map always fits: no scrolling inside it */
+  .scroller { position: relative; overflow: hidden; padding: 6px 4px; }
+  .scroller svg { display: block; width: 100%; height: auto; max-height: 80vh; margin: 0 auto; }
   svg text { font-family: var(--font-ui); text-anchor: middle; dominant-baseline: central; pointer-events: none; user-select: none; }
   .seat rect { fill: var(--dim); stroke: var(--dim-line); stroke-width: 1; transition: fill 0.2s, stroke 0.2s; }
   .seat text { fill: #4a4059; font-weight: 600; }
@@ -223,7 +221,6 @@
       <div class="legend"><span><i class="l-open"></i>Open</span><span><i class="l-taken"></i>Taken</span><span><i class="l-mine"></i>Yours</span><span><i class="l-dim"></i>Not ours</span></div>
       <div class="tools-right">
         <div class="seg" role="group" aria-label="View"><button type="button" id="vOurs" aria-pressed="true">Our seats</button><button type="button" id="vAll" aria-pressed="false">Whole theater</button></div>
-        <div class="zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><button type="button" id="zIn" aria-label="Zoom in">+</button></div>
       </div>
     </div>
     <div class="scroller" id="scroller"><svg id="map" role="group" aria-label="Theater seat map"></svg></div>
@@ -288,17 +285,42 @@
   const svg = $('map');
   const seatEls = {};
   const ours = SM.seats.filter((s) => s.id);
-  const bounds = (() => { const ys = ours.map((s) => s.y); return { y0: Math.min(...ys) - 60, y1: Math.max(...ys) + 170 }; })();
-  let view = 'ours', zoom = 1;
+  let view = 'ours', rotated = false;
+
+  // "Our seats" shows only our rows: the balcony band (rows A–C) and the center band (rows K–L),
+  // with the orchestra rows between them cut out so the whole thing fits without scrolling.
+  // Narrow screens get it turned 90° (stage on the left) so the long rows run down the phone.
+  const inBal = (s) => s.sec === 'BAL' && 'ABC'.includes(s.row);
+  const inMid = (s) => s.sec === 'MID' && 'KL'.includes(s.row);
+  const world = el('g', {}, svg);
+  const restG = el('g', {}, world), balG = el('g', {}, world), midG = el('g', {}, world);
+  const seatTexts = [], uprightLabels = [], oursOnly = [];
+  const OURS = (() => {
+    const bal = SM.seats.filter(inBal), mid = SM.seats.filter(inMid), xs = bal.concat(mid).map((s) => s.x);
+    const balTop = Math.min(...bal.map((s) => s.y)) - 20;
+    const balBottom = SM.labels.find((l) => l.k === 'section' && l.t === 'BALCONY').y + 14;
+    const midTop = Math.min(...mid.map((s) => s.y)) - 44;          // room for the CENTER label above row L
+    const midBottom = Math.max(...mid.map((s) => s.y)) + 20;
+    const dy = balBottom + 18 - midTop;
+    return { x0: Math.min(...xs) - 50, x1: Math.max(...xs) + 50, y0: balTop, y1: midBottom + dy + 40, dy, midTop, midBottom };
+  })();
 
   function el(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+  function bandOf(l) {
+    if (l.k === 'row' && 'ABC'.includes(l.t) && l.y < 300) return balG;
+    if (l.k === 'section' && l.t === 'BALCONY') return balG;
+    if (l.k === 'row' && 'KL'.includes(l.t) && l.y > 500 && l.y < 650) return midG;
+    return restG;
+  }
   function buildMap() {
     const w = SM.seatW, h = SM.seatH;
     for (const s of SM.seats) {
-      const g = el('g', { class: 'seat' + (s.id ? ' ours loading' : ''), transform: `translate(${s.x} ${s.y}) rotate(${s.r})` }, svg);
+      const parent = inBal(s) ? balG : inMid(s) ? midG : restG;
+      const g = el('g', { class: 'seat' + (s.id ? ' ours loading' : ''), transform: `translate(${s.x} ${s.y}) rotate(${s.r})` }, parent);
       el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: 5 }, g);
       const t = el('text', { y: 0.5, 'font-size': s.n >= 100 ? 10.2 : 11 }, g);
       t.textContent = s.n;
+      seatTexts.push(t);
       if (s.id) {
         g.dataset.id = s.id;
         g.setAttribute('tabindex', '0');
@@ -307,47 +329,51 @@
       }
     }
     for (const l of SM.labels) {
+      const parent = bandOf(l);
       if (l.k === 'small2') {
         const [a, b] = l.t.split('|');
-        const t = el('text', { class: 'small', x: l.x, y: l.y }, svg);
+        const t = el('text', { class: 'small', x: l.x, y: l.y }, parent);
         el('tspan', { x: l.x }, t).textContent = a;
         el('tspan', { x: l.x, dy: 15 }, t).textContent = b;
       } else {
-        el('text', { class: l.k === 'row' ? 'rowlab' + (l.on ? ' on' : '') : l.k === 'section' ? 'seclab' : 'small', x: l.x, y: l.y }, svg).textContent = l.t;
+        const t = el('text', { class: l.k === 'row' ? 'rowlab' + (l.on ? ' on' : '') : l.k === 'section' ? 'seclab' : 'small', x: l.x, y: l.y }, parent);
+        t.textContent = l.t;
+        if (l.k === 'row' && parent !== restG) uprightLabels.push(t);
       }
     }
     const sy = SM.stageY, W = SM.w;
-    el('path', { class: 'stage', d: `M ${W / 2 - 300} ${sy} Q ${W / 2} ${sy - 34} ${W / 2 + 300} ${sy} L ${W / 2 + 300} ${sy + 26} L ${W / 2 - 300} ${sy + 26} Z` }, svg);
-    el('text', { class: 'stagelab', x: W / 2, y: sy + 6 }, svg).textContent = 'STAGE';
+    el('path', { class: 'stage', d: `M ${W / 2 - 300} ${sy} Q ${W / 2} ${sy - 34} ${W / 2 + 300} ${sy} L ${W / 2 + 300} ${sy + 26} L ${W / 2 - 300} ${sy + 26} Z` }, restG);
+    el('text', { class: 'stagelab', x: W / 2, y: sy + 6 }, restG).textContent = 'STAGE';
+    // labels that only make sense once the middle of the theater is cut out
+    oursOnly.push(el('text', { class: 'seclab', x: W / 2, y: OURS.midTop + 14 }, midG));
+    oursOnly[0].textContent = 'CENTER';
+    oursOnly.push(el('text', { class: 'stagelab', x: W / 2, y: OURS.midBottom + 22 }, midG));
+    oursOnly[1].textContent = '↓ STAGE ↓';
   }
 
-  function applyView(keepCenter = true) {
-    const sc = $('scroller');
-    const cx = keepCenter && sc.scrollWidth ? (sc.scrollLeft + sc.clientWidth / 2) / sc.scrollWidth : 0.5;
-    const cy = keepCenter && sc.scrollHeight ? (sc.scrollTop + sc.clientHeight / 2) / sc.scrollHeight : 0.3;
-    const vb = view === 'ours' ? [0, bounds.y0, SM.w, bounds.y1 - bounds.y0] : [0, 0, SM.w, SM.h];
+  function applyView() {
+    const ourView = view === 'ours';
+    rotated = ourView && $('scroller').clientWidth < 640;
+    world.setAttribute('transform', rotated ? 'rotate(90)' : '');
+    restG.style.display = ourView ? 'none' : '';
+    midG.setAttribute('transform', ourView ? `translate(0 ${OURS.dy})` : '');
+    oursOnly.forEach((t) => { t.style.display = ourView ? '' : 'none'; });
+    // keep seat numbers and row letters reading upright when the map is turned
+    seatTexts.forEach((t) => { if (rotated) t.setAttribute('transform', 'rotate(-90)'); else t.removeAttribute('transform'); });
+    uprightLabels.forEach((t) => { if (rotated) t.setAttribute('transform', `rotate(-90 ${t.getAttribute('x')} ${t.getAttribute('y')})`); else t.removeAttribute('transform'); });
+    const w = OURS.x1 - OURS.x0, h = OURS.y1 - OURS.y0;
+    const vb = !ourView ? [0, 0, SM.w, SM.h] : rotated ? [-OURS.y1, OURS.x0, h, w] : [OURS.x0, OURS.y0, w, h];
     svg.setAttribute('viewBox', vb.join(' '));
-    svg.style.width = (zoom * 100) + '%';
-    $('vOurs').setAttribute('aria-pressed', String(view === 'ours'));
-    $('vAll').setAttribute('aria-pressed', String(view === 'all'));
-    const swipe = zoom > 1.05 ? 'Swipe the map sideways to see every seat. ' : '';
-    $('hintL').textContent = swipe + (view === 'ours' ? 'Showing our sections; the stage is below (see Whole theater).' : 'Stage is at the bottom of the theater.');
-    requestAnimationFrame(() => { sc.scrollLeft = cx * sc.scrollWidth - sc.clientWidth / 2; sc.scrollTop = cy * sc.scrollHeight - sc.clientHeight / 2; });
+    $('vOurs').setAttribute('aria-pressed', String(ourView));
+    $('vAll').setAttribute('aria-pressed', String(!ourView));
+    $('hintL').textContent = !ourView ? 'Stage is at the bottom of the theater.'
+      : rotated ? 'Turned sideways to fit your screen: the stage is to the left.'
+      : 'Only our rows are shown. Whole theater shows where they are.';
   }
-  function setZoom(z) { zoom = Math.max(1, Math.min(3.2, z)); applyView(true); }
-  $('zIn').addEventListener('click', () => setZoom(zoom * 1.4));
-  $('zOut').addEventListener('click', () => setZoom(zoom / 1.4));
-  $('vOurs').addEventListener('click', () => { view = 'ours'; applyView(false); });
-  $('vAll').addEventListener('click', () => { view = 'all'; applyView(false); });
-
-  // drag to pan with a mouse when zoomed in
-  (() => {
-    const sc = $('scroller'); let down = null, moved = false;
-    sc.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse' || zoom === 1) return; down = { x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop }; moved = false; });
-    window.addEventListener('pointermove', (e) => { if (!down) return; const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.abs(dx) + Math.abs(dy) > 4) { moved = true; sc.classList.add('dragging'); } sc.scrollLeft = down.l - dx; sc.scrollTop = down.t - dy; });
-    window.addEventListener('pointerup', () => { down = null; setTimeout(() => sc.classList.remove('dragging'), 0); });
-    sc.addEventListener('click', (e) => { if (moved) { e.stopPropagation(); moved = false; } }, true);
-  })();
+  $('vOurs').addEventListener('click', () => { view = 'ours'; applyView(); });
+  $('vAll').addEventListener('click', () => { view = 'all'; applyView(); });
+  let rz = 0;
+  window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (rotated !== (view === 'ours' && $('scroller').clientWidth < 640)) applyView(); }, 150); });
 
   svg.addEventListener('click', (e) => { const g = e.target.closest('.seat.ours'); if (g) choose(g.dataset.id); });
   svg.addEventListener('keydown', (e) => { const g = e.target.closest('.seat.ours'); if (g && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); choose(g.dataset.id); } });
@@ -359,7 +385,7 @@
     const r = g.getBoundingClientRect(); tip.style.left = (r.left + r.width / 2) + 'px'; tip.style.top = r.top + 'px'; tip.hidden = false;
   });
   svg.addEventListener('pointerout', (e) => { if (e.target.closest('.seat.ours')) tip.hidden = true; });
-  $('scroller').addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
+  window.addEventListener('scroll', () => { tip.hidden = true; }, { passive: true });
 
   /* ── list picker ── */
   function buildList() {
@@ -608,10 +634,8 @@
   /* ── start ── */
   buildMap();
   buildList();
-  const narrow = window.matchMedia('(max-width: 700px)').matches;
-  zoom = narrow ? 2.4 : 1;
-  if (narrow) $('list').open = false;
-  applyView(false);
+  if (window.matchMedia('(max-width: 700px)').matches) $('list').open = false;
+  applyView();
   paint();
   getState();
   setInterval(() => { if (document.visibilityState === 'visible' && !busy) getState(); }, POLL_MS);
