@@ -58,10 +58,10 @@
   .meta { margin: 10px 0 0; color: var(--fg-2); font-size: 16.5px; }
   .meta b { color: var(--fg); font-weight: 600; }
   .topline { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 28px; }
-  .counter { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; }
+  .counter { display: flex; align-items: baseline; gap: 10px; max-width: 100%; box-sizing: border-box; padding: 10px 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; }
   .counter b { font-family: var(--font-display); font-size: 34px; line-height: 1; color: var(--open-hi); font-variant-numeric: tabular-nums; }
   .counter span { color: var(--fg-2); font-size: 14.5px; }
-  .counter .bar { width: 120px; height: 6px; border-radius: 3px; background: var(--taken); overflow: hidden; align-self: center; }
+  .counter .bar { flex: 0 1 120px; min-width: 28px; height: 6px; border-radius: 3px; background: var(--taken); overflow: hidden; align-self: center; }
   .counter .bar i { display: block; height: 100%; background: var(--open); transition: width 0.4s ease; }
 
   /* notices */
