@@ -214,7 +214,7 @@
       </div>
     </div>
     <div class="notice info" id="pickNotice" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="pickText"></span></div>
-    <p class="notice info" id="howto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span><b>Tap a purple seat to claim it</b> with your NetID and last name. One seat per person on the sign-up list. Rows <b>A, B and C are in the balcony</b> (seats in the 200s), not the orchestra rows by the stage. Rows K and L are in the center block.</span></p>
+    <p class="notice info" id="howto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg><span><b>Tap a purple seat to claim it</b> with your NetID (or the phone number you signed up with) and last name. One seat per person on the sign-up list. Rows <b>A, B and C are in the balcony</b> (seats in the 200s), not the orchestra rows by the stage. Rows K and L are in the center block.</span></p>
     <p class="findrow"><button class="linkbtn" type="button" id="findBtn">Already picked a seat? Find it</button></p>
   </header>
 
@@ -420,7 +420,7 @@
   function head(id, kicker) { return `<div class="panel-head"><div><small>${esc(kicker)}</small><h2 id="pTitle">${esc(parse(id).section)} <em>${esc(short(id))}</em></h2></div><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>`; }
 
   function idFields(btnLabel) {
-    return `<label for="fNet">NetID<input id="fNet" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="e.g. abc123" maxlength="40" value="${esc(local.netid || '')}" required></label>
+    return `<label for="fNet">NetID or phone number<input id="fNet" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="abc123 or 732-555-0123" maxlength="60" value="${esc(local.netid || '')}" required></label>
       <label for="fLast">Last name<input id="fLast" type="text" autocomplete="family-name" placeholder="As on the sign-up list" maxlength="60" value="${esc(local.last || '')}" required></label>
       <p class="err" id="fErr" ${lastResult && !lastResult.ok && lastResult.error !== 'has_seat' ? '' : 'hidden'}>${lastResult && !lastResult.ok && lastResult.error !== 'has_seat' ? esc(errorText(lastResult)) : ''}</p>
       <div class="actions"><button class="btn primary" type="submit" id="fGo" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : btnLabel}</button></div>`;
@@ -435,7 +435,7 @@
           ? `<p><b>Your seat is ${esc(where(lastResult.seat))}.</b> This device will remember it now.</p><div class="actions"><button class="btn" type="button" data-act="cal">Add to calendar</button><button class="btn primary" type="button" data-act="close">Done</button></div>`
           : `<p><b>You haven’t picked a seat yet.</b> Tap any purple seat on the map to choose one.</p><div class="actions"><button class="btn primary" type="button" data-act="close">Pick a seat</button></div>`;
       } else {
-        html += `<p>Enter the NetID and last name you signed up with.</p><form id="rForm" novalidate>${idFields('Find my seat')}</form>`;
+        html += `<p>Enter your NetID (or the phone number you signed up with) and your last name.</p><form id="rForm" novalidate>${idFields('Find my seat')}</form>`;
       }
       setPanel(html, () => find(panel.querySelector('#fNet').value, panel.querySelector('#fLast').value));
       return;
@@ -506,10 +506,10 @@
 
   function errorText(r) {
     if (r.error === 'taken') return 'Someone just took that seat. Pick another purple seat.';
-    if (r.error === 'not_on_list') return `We couldn’t find that NetID and last name on the sign-up list. Check the spelling, or message ${ORGANIZER}.`;
+    if (r.error === 'not_on_list') return `We couldn’t match that to the sign-up list. Check your last name, or try the phone number or email you signed up with. Still stuck? Message ${ORGANIZER}.`;
     if (r.error === 'not_open') return 'Seat picking hasn’t opened yet. Check back soon.';
     if (r.error === 'closed') return `Seat picking is closed. Message ${ORGANIZER} if you need a change.`;
-    if (r.error === 'invalid') return r.detail || 'Enter your NetID and last name.';
+    if (r.error === 'invalid') return r.detail || 'Enter your NetID or phone number, and your last name.';
     if (r.error === 'busy') return 'Lots of people are booking right now. Try again in a few seconds.';
     if (r.error === 'network') return 'Couldn’t reach the seat list. Check your connection and try again.';
     if (r.error === 'not_available') return 'That seat isn’t one of ours.';
@@ -551,7 +551,7 @@
     const body = { action: 'reserve', seat: id, token: local.token || '' };
     if (who.netid !== undefined) {
       const netid = String(who.netid).trim(), last = String(who.last).trim();
-      if (!netid || !last) { lastResult = { ok: false, error: 'invalid', detail: 'Enter your NetID and last name.' }; renderPanel(); return; }
+      if (!netid || !last) { lastResult = { ok: false, error: 'invalid', detail: 'Enter your NetID or phone number, and your last name.' }; renderPanel(); return; }
       body.netid = netid; body.last = last; local.netid = netid; local.last = last;
     }
     if (who.move) body.move = true;
