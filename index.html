@@ -8,6 +8,9 @@
 <meta name="theme-color" content="#120c1c">
 <meta property="og:title" content="Pick your seat: The Screwtape Letters">
 <meta property="og:description" content="Thursday, Nov 5 · 7:30 PM · NBPAC. Tap an open seat to claim it.">
+<meta property="og:image" content="https://michaeltony6.github.io/screwtape-seats/occm-logo.png">
+<meta property="og:site_name" content="OCCM Rutgers New Brunswick">
+<link rel="apple-touch-icon" href="occm-logo.png">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23120c1c'/%3E%3Crect x='7' y='9' width='18' height='13' rx='3' fill='%238f5fd6'/%3E%3Crect x='5' y='20' width='22' height='4' rx='2' fill='%23f2c14e'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -53,6 +56,10 @@
 
   /* header */
   header { padding-block: 34px 18px; }
+  /* the OCCM seal is navy on transparent, so it sits on a white disc */
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .seal { flex: none; width: 60px; height: 60px; padding: 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(179, 140, 255, 0.18), 0 8px 22px rgba(0, 0, 0, 0.4); }
+  .org { margin: 0 0 3px; font-size: 15px; font-weight: 600; color: var(--fg); }
   .eyebrow { margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--open-hi); }
   h1 { margin: 6px 0 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(2.2rem, 6.4vw, 3.6rem); line-height: 1.02; letter-spacing: -0.01em; text-wrap: balance; }
   .meta { margin: 10px 0 0; color: var(--fg-2); font-size: 16.5px; }
@@ -194,7 +201,10 @@
   <header>
     <div class="topline">
       <div>
-        <p class="eyebrow">Group seats · NBPAC</p>
+        <div class="brand">
+          <img class="seal" src="occm-logo.png" width="60" height="60" alt="Orthodox Christian Campus Ministries, Rutgers New Brunswick">
+          <div><p class="org">OCCM · Rutgers New Brunswick</p><p class="eyebrow">Group seats · NBPAC</p></div>
+        </div>
         <h1>The Screwtape Letters</h1>
         <p class="meta"><b>Thursday, November 5 · 7:30 PM</b><br>Elizabeth Ross Johnson Theater · 11 Livingston Ave, New Brunswick</p>
       </div>
