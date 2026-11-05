@@ -273,6 +273,7 @@
   let state = { seats: {}, open: null, total: 100, mine: null, picking: 'open', loaded: false };
   let local = load();
   let selected = null, busy = false, confirmCancel = false, lastResult = null, pending = null;
+  let misses = 0, idHint = '';                         // failed sign-ins this visit; which ID the form is nudging toward
 
   $('contact').textContent = `Questions or a seat problem? Message ${ORGANIZER}.`;
   if (!configured) $('setupNotice').hidden = false;
@@ -455,11 +456,24 @@
   const canPick = () => configured && state.picking === 'open';
   function head(id, kicker) { return `<div class="panel-head"><div><small>${esc(kicker)}</small><h2 id="pTitle">${esc(parse(id).section)} <em>${esc(short(id))}</em></h2></div><button class="x" type="button" data-act="close" aria-label="Close">×</button></div>`; }
 
+  // what someone typed in the ID box, read the same way the seat list reads it
+  function idKind(v) {
+    const s = String(v).trim();
+    if (s.indexOf('@') > 0) return 'email';
+    if (/[a-z]/i.test(s)) return 'netid';
+    return s.replace(/\D/g, '').length >= 10 ? 'phone' : 'short';
+  }
+
   function idFields(btnLabel) {
-    return `<label for="fNet">NetID or phone number<input id="fNet" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="abc123 or 732-555-0123" maxlength="60" value="${esc(local.netid || '')}" required></label>
+    const err = lastResult && !lastResult.ok && lastResult.error !== 'has_seat';
+    // after a miss, offer the other kind of ID: a NetID that isn't on file → phone, a phone that isn't → NetID
+    const swap = err && lastResult.error === 'not_on_list' ? (lastResult.tried === 'phone' ? ['netid', 'Use my NetID instead'] : ['phone', 'Use my phone number instead']) : null;
+    const label = idHint === 'phone' ? 'Phone number from the sign-up form' : idHint === 'netid' ? 'NetID' : 'NetID or phone number';
+    const ph = idHint === 'phone' ? '732-555-0123' : idHint === 'netid' ? 'abc123' : 'abc123 or 732-555-0123';
+    return `<label for="fNet">${label}<input id="fNet" type="text" ${idHint === 'phone' ? 'inputmode="tel" ' : ''}autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="${ph}" maxlength="60" value="${esc(local.netid || '')}" required></label>
       <label for="fLast">Last name<input id="fLast" type="text" autocomplete="family-name" placeholder="As on the sign-up list" maxlength="60" value="${esc(local.last || '')}" required></label>
-      <p class="err" id="fErr" ${lastResult && !lastResult.ok && lastResult.error !== 'has_seat' ? '' : 'hidden'}>${lastResult && !lastResult.ok && lastResult.error !== 'has_seat' ? esc(errorText(lastResult)) : ''}</p>
-      <div class="actions"><button class="btn primary" type="submit" id="fGo" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : btnLabel}</button></div>`;
+      <p class="err" id="fErr" ${err ? '' : 'hidden'}>${err ? esc(errorText(lastResult)) : ''}</p>
+      <div class="actions">${swap ? `<button class="btn" type="button" data-act="try-${swap[0]}">${swap[1]}</button>` : ''}<button class="btn primary" type="submit" id="fGo" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : btnLabel}</button></div>`;
   }
 
   function renderPanel() {
@@ -532,6 +546,10 @@
     else if (a === 'cancel-yes') cancel();
     else if (a === 'move-yes' && pending) reserve(selected, Object.assign({}, pending, { move: true }));
     else if (a === 'move-token') reserve(selected, {});
+    else if (a === 'try-phone' || a === 'try-netid') {
+      idHint = a.slice(4); lastResult = null; renderPanel();
+      const f = panel.querySelector('#fNet'); if (f) { f.value = ''; f.focus(); }
+    }
   });
   $('findBtn').addEventListener('click', () => { if (!state.loaded) { toast('Loading seats…'); return; } selected = '__find'; lastResult = null; paint(); openSheet(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && sheet.classList.contains('open')) closeSheet(); });
@@ -542,7 +560,13 @@
 
   function errorText(r) {
     if (r.error === 'taken') return 'Someone just took that seat. Pick another purple seat.';
-    if (r.error === 'not_on_list') return `We couldn’t match that to the sign-up list. Check your last name, or try the phone number or email you signed up with. Still stuck? Message ${ORGANIZER}.`;
+    if (r.error === 'not_on_list') {
+      const stuck = misses >= 2 ? ` Check that your last name is spelled the way you wrote it on the form. Still stuck? Message ${ORGANIZER}.` : '';
+      if (r.tried === 'netid') return `We couldn’t find that NetID with that last name. Some people signed up with a personal email, so their NetID isn’t on the list. Try the phone number you put on the sign-up form instead.${stuck}`;
+      if (r.tried === 'phone') return `We couldn’t find that phone number with that last name. Use the number you put on the sign-up form, or try your NetID instead.${stuck}`;
+      if (r.tried === 'email') return `We couldn’t find that email with that last name. Try the phone number you signed up with, or your NetID.${stuck}`;
+      return `We couldn’t match that to the sign-up list. Check your last name, or try the phone number you signed up with.${stuck}`;
+    }
     if (r.error === 'not_open') return 'Seat picking hasn’t opened yet. Check back soon.';
     if (r.error === 'closed') return `Seat picking is closed. Message ${ORGANIZER} if you need a change.`;
     if (r.error === 'invalid') return r.detail || 'Enter your NetID or phone number, and your last name.';
@@ -582,12 +606,19 @@
       return await r.json();
     } catch (e) { return { ok: false, error: 'network' }; }
   }
+  const SHORT_PHONE = 'That phone number looks short. Enter all 10 digits, like 732-555-0123.';
+  // remember what kind of ID missed, so the error can suggest the other one
+  function noteMiss(res, typed) {
+    if (res.error === 'not_on_list') { res.tried = idKind(typed || ''); misses++; }
+    else if (res.ok) { misses = 0; idHint = ''; }
+  }
   async function reserve(id, who) {
     if (busy) return;
     const body = { action: 'reserve', seat: id, token: local.token || '' };
     if (who.netid !== undefined) {
       const netid = String(who.netid).trim(), last = String(who.last).trim();
       if (!netid || !last) { lastResult = { ok: false, error: 'invalid', detail: 'Enter your NetID or phone number, and your last name.' }; renderPanel(); return; }
+      if (idKind(netid) === 'short') { lastResult = { ok: false, error: 'invalid', detail: SHORT_PHONE }; renderPanel(); return; }
       body.netid = netid; body.last = last; local.netid = netid; local.last = last;
     }
     if (who.move) body.move = true;
@@ -595,6 +626,7 @@
     const res = await post(body);
     busy = false;
     res.action = 'reserve';
+    noteMiss(res, body.netid);
     if (res.ok) { local.token = res.token; local.seat = res.seat; pending = null; }
     if (res.error === 'has_seat') pending = { netid: body.netid, last: body.last };
     save();
@@ -606,10 +638,12 @@
     if (busy) return;
     netid = netid.trim(); last = last.trim();
     if (!netid || !last) { lastResult = { ok: false, error: 'invalid' }; renderPanel(); return; }
+    if (idKind(netid) === 'short') { lastResult = { ok: false, error: 'invalid', detail: SHORT_PHONE }; renderPanel(); return; }
     busy = true; lastResult = null; renderPanel();
     const res = await post({ action: 'find', netid, last });
     busy = false;
     res.action = 'find';
+    noteMiss(res, netid);
     local.netid = netid; local.last = last;
     if (res.ok && res.token) { local.token = res.token; local.seat = res.seat; }
     save();
