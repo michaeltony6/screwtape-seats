@@ -1,5 +1,7 @@
 # Screwtape Letters seat picker
 
+**Closed after the show.** `index.html` is now a static closing page with no seat map, names or backend calls. The rest of this file describes the picker as it ran. Its last version is in commit `0790981`; to bring it back for another outing, run `git show 0790981:index.html > index.html`, then follow the setup below with a new Sheet and deployment.
+
 A small website where everyone on the sign-up list picks their own seat for **The Screwtape Letters** (NBPAC, Thursday, November 5, 2026, 7:30 PM). Only the 100 seats on our order can be picked; every other seat on the map is grayed out.
 
 - `index.html`: the website (plain HTML/CSS/JS, no build step)
